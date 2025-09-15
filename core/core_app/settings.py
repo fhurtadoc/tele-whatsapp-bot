@@ -11,6 +11,8 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 
 from pathlib import Path
+import os
+
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -25,7 +27,7 @@ SECRET_KEY = 'django-insecure-n=_ppmim=4m_yd&-7n8d1g^m&d8zkfu@%z$dt6dqpy4#xnl4m2
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = ["*"]   # i changed this because, i goint to made a lot of request from ngrok when i testing the telegram_bot
 
 
 # Application definition
@@ -37,6 +39,12 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+
+     # Django REST Framework
+    "rest_framework",
+    "rest_framework.authtoken",
+
+
 ]
 
 MIDDLEWARE = [
@@ -47,6 +55,10 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    "allauth.account.middleware.AccountMiddleware", 
+    "whitenoise.middleware.WhiteNoiseMiddleware",  # <- importante
+    "django.contrib.sessions.middleware.SessionMiddleware",
+
 ]
 
 ROOT_URLCONF = 'core_app.urls'
@@ -73,9 +85,13 @@ WSGI_APPLICATION = 'core_app.wsgi.application'
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 
 DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+    "default": {
+        "ENGINE": "django.db.backends.postgresql",
+        "NAME": os.getenv("POSTGRES_DB", "converter_db"),
+        "USER": os.getenv("POSTGRES_USER", "converter_user"),
+        "PASSWORD": os.getenv("POSTGRES_PASSWORD", "converter_password"),
+        "HOST": os.getenv("POSTGRES_HOST", "db"),   # <- important
+        "PORT": os.getenv("POSTGRES_PORT", "5432"), # <- important
     }
 }
 
