@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.pkl
+*.sqlite3
+
+# Entornos virtuales
+venv/
+.venv/
+env/
+ENV/
+
+# Archivos de configuración
+*.env
+*.log
+*.pot
+
+# Django stuff
+*.pyc
+*.pyo
+db.sqlite3
+/staticfiles/
+/media/
+
+# IDEs
+.vscode/
+.idea/
+
+# Docker
+*.pid
+*.seed
+*.bak
+*.swp
+data/db/
