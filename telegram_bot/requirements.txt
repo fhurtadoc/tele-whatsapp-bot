@@ -1,0 +1,11 @@
+fastapi
+twilio
+starlette
+uvicorn
+gunicorn>=21.0
+psycopg2-binary>=2.9  
+requests
+Pillow
+psycopg2-binary
+python-dotenv
+whitenoise
