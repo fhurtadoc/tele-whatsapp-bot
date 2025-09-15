@@ -27,6 +27,16 @@ services:
     networks:
       - my_network
 
+  telegram_chatbot:
+    build:
+      context: ./telegram_bot
+      dockerfile: Dockerfile
+    command: uvicorn main:app --host 0.0.0.0 --port 8001
+    ports:
+      - "8001:8001" 
+    networks:
+      - my_network
+
  
 networks:
   my_network:

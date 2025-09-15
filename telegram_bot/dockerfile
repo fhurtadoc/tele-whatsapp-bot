@@ -1,0 +1,19 @@
+# Usa la imagen base de Python
+FROM python:3.8-slim
+
+# Establece el directorio de trabajo en /app
+WORKDIR /app
+
+# Copia los archivos requeridos (main.py, services/)
+COPY main.py .
+COPY ./ ./
+
+# Instala las dependencias usando el archivo requirements.txt si tienes uno
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Expone el puerto 8002 (el mismo que usaste en uvicorn.run)
+EXPOSE 8002
+
+# Comando para ejecutar la aplicación
+CMD ["python", "main.py"]
