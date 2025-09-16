@@ -2,31 +2,8 @@ import json
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from .models import User, Language, TypeChat, Chat
+from .adapters import adapt_request
 
-# -------- Adaptador ----------
-def adapt_request(data):
-    """Convierte el JSON externo al formato interno de User/Chat"""
-    first_name = data.get("first_name", "")
-    last_name = data.get("last_name", "")
-    phone_number = data.get("phone")
-
-    # nombre completo
-    name = f"{first_name}-{last_name}".strip()
-
-    # mapear language
-    lang_map = {"es": 1, "en": 2}
-    language_id = lang_map.get(data.get("language"))
-
-    # mapear plataforma
-    platform_map = {"telegram": 1, "whatsapp": 2}
-    typechat_id = platform_map.get(data.get("platform"))
-
-    return {
-        "phone_number": phone_number,
-        "name": name,
-        "language_id": language_id,
-        "typechat_id": typechat_id,
-    }
 
 # -------- Vista API ----------
 @csrf_exempt
@@ -63,7 +40,7 @@ def create_user(request):
                         chat_id=adapted["phone_number"]  # o el ID externo de la plataforma
                     )
                 except TypeChat.DoesNotExist:
-                    pass  # si no existe, ignoramos
+                    pass  
 
             return JsonResponse({
                 "id_user": user.id_user,
@@ -76,3 +53,23 @@ def create_user(request):
             return JsonResponse({"error": "Invalid JSON"}, status=400)
 
     return JsonResponse({"error": "Method not allowed"}, status=405)
+
+@csrf_exempt
+def get_user_by_chat(request, chat_id):
+    if request.method == "GET":
+        try:
+            chat = Chat.objects.select_related("user", "user__language", "typechat").get(chat_id=chat_id)
+            user = chat.user
+            return JsonResponse({
+                "id_user": user.id_user,
+                "name": user.name,
+                "phone_number": str(user.phone_number),
+                "language": user.language.language,
+                "chat_id": chat.chat_id,
+                "chat_type": chat.typechat.name,
+            }, status=200)
+        except Chat.DoesNotExist:
+            return JsonResponse({"error": "Chat ID not found"}, status=404)
+    else:
+        return JsonResponse({"error": "Only GET allowed"}, status=405)
+
