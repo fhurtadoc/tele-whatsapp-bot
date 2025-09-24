@@ -3,11 +3,14 @@ from fastapi.responses import JSONResponse
 import requests
 import uvicorn
 import os
+import json
 
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 if not TELEGRAM_BOT_TOKEN:
     raise ValueError("TELEGRAM_BOT_TOKEN no está definido en las variables de entorno")
 
+
+COLAB_URL=os.getenv("URL_OF_COLAB")
 TELEGRAM_API_URL = "https://api.telegram.org"
 DJANGO_API = "http://core:8000/apiCustomers/"
 
@@ -66,23 +69,72 @@ def validate_user(chat_id: int, data: dict) -> bool:
         raise Exception("Error consultando usuario")
 
 
-# 🎯 Procesar mensajes normales
+
+
 def handle_message(chat_id: int, message: dict):
     state = user_states.get(chat_id)
 
+    # --- Caso 1: Texto → Voz ---
     if state == "waiting_text" and "text" in message:
-        print("✅ Texto → Voz:", message["text"])
+        text = message["text"].strip()
+
+        # Validación: longitud máxima
+        if len(text) > 100:
+            send_telegram_message(chat_id, "⚠️ El texto no puede superar los 100 caracteres.")
+            user_states[chat_id] = None
+            return
+
+        # Notificación al usuario
         send_telegram_message(chat_id, "Procesando tu texto → voz 🎙")
-        user_states[chat_id] = None
 
-    elif state == "waiting_audio" and any(k in message for k in ["voice", "audio", "document"]):
-        print("✅ Voz → Texto, archivo recibido:", message)
-        send_telegram_message(chat_id, "Procesando tu audio → texto 🗣")
-        user_states[chat_id] = None
+        # Llamada a Colab
+        try:
+            url = f"{COLAB_URL}/tts"
+            payload = {"texto": text}
+            response = requests.post(url, json=payload, timeout=30)
 
-    else:
-        # Si no está en ningún estado especial, mostramos el menú
-        send_telegram_menu(chat_id)
+            if response.status_code == 200:
+                # Aquí podrías devolver un archivo de audio al usuario
+                send_telegram_message(chat_id, "✅ Conversión de texto a voz completada.")
+                send_telegram_message(chat_id, response)
+            else:
+                send_telegram_message(chat_id, f"❌ Error en Colab: {response.text}")
+        except requests.RequestException as e:
+            send_telegram_message(chat_id, f"❌ No pude conectar con Colab: {str(e)}")
+
+        user_states[chat_id] = None
+        return
+
+    # --- Caso 2: Voz → Texto ---
+    if state == "waiting_audio":
+        if "voice" in message or "audio" in message:
+            send_telegram_message(chat_id, "Procesando tu audio → texto 🗣")
+
+            # Obtener file_id del audio
+            file_id = message["voice"]["file_id"] if "voice" in message else message["audio"]["file_id"]
+
+            try:
+                url = f"{COLAB_URL}/stt"
+                payload = {"file_id": file_id}
+                response = requests.post(url, json=payload, timeout=60)
+
+                if response.status_code == 200:
+                    text_result = response.json().get("texto", "")
+                    send_telegram_message(chat_id, f"✅ Transcripción: {text_result}")
+                else:
+                    send_telegram_message(chat_id, f"❌ Error en Colab: {response.text}")
+            except requests.RequestException as e:
+                send_telegram_message(chat_id, f"❌ No pude conectar con Colab: {str(e)}")
+
+        else:
+            send_telegram_message(chat_id, "⚠️ Por favor envía un archivo de audio válido (no video, imagen o documento).")
+
+        user_states[chat_id] = None
+        return
+
+    # --- Caso 3: Sin estado definido ---
+    send_telegram_menu(chat_id)
+
 
 
 # 🎯 Procesar botones del teclado
