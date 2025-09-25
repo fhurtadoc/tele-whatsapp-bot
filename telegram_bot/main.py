@@ -4,6 +4,18 @@ import requests
 import uvicorn
 import os
 import json
+from minio import Minio
+from minio.error import S3Error
+from datetime import datetime
+import io
+
+
+MINIO_CLIENT = Minio(
+    os.getenv("MINIO_ENDPOINT", "localhost:9000"),
+    access_key=os.getenv("MINIO_ACCESS_KEY", "minioadmin"),
+    secret_key=os.getenv("MINIO_SECRET_KEY", "minioadmin123"),
+    secure=os.getenv("MINIO_SECURE", "False").lower() == "true"
+)
 
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 if not TELEGRAM_BOT_TOKEN:
@@ -23,6 +35,16 @@ def send_telegram_message(chat_id: int, text: str):
     payload = {"chat_id": chat_id, "text": text}
     response = requests.post(url, json=payload)
     print("📤 Respuesta Telegram (mensaje):", response.status_code, response.text)
+
+
+def send_telegram_voice(chat_id: int, audio_bytes: bytes, filename: str = "audio.ogg"):
+    url = f"{TELEGRAM_API_URL}/bot{TELEGRAM_BOT_TOKEN}/sendVoice"
+    files = {"voice": (filename, io.BytesIO(audio_bytes))}
+    data = {"chat_id": chat_id}
+    response = requests.post(url, data=data, files=files)
+    print("📤 Respuesta Telegram (voz):", response.status_code, response.text)
+
+
 
 
 # 📤 Enviar menú con opciones
@@ -78,25 +100,29 @@ def handle_message(chat_id: int, message: dict):
     if state == "waiting_text" and "text" in message:
         text = message["text"].strip()
 
-        # Validación: longitud máxima
         if len(text) > 100:
             send_telegram_message(chat_id, "⚠️ El texto no puede superar los 100 caracteres.")
             user_states[chat_id] = None
             return
 
-        # Notificación al usuario
         send_telegram_message(chat_id, "Procesando tu texto → voz 🎙")
 
-        # Llamada a Colab
         try:
             url = f"{COLAB_URL}/tts"
             payload = {"texto": text}
             response = requests.post(url, json=payload, timeout=30)
 
             if response.status_code == 200:
-                # Aquí podrías devolver un archivo de audio al usuario
+                audio_bytes = response.content
+
+                # 🔹 Guardar en MinIO
+                file_name = generate_filename(chat_id, ".mp3")
+                upload_to_minio("colab", file_name, audio_bytes, "audio/mpeg")
+
                 send_telegram_message(chat_id, "✅ Conversión de texto a voz completada.")
-                send_telegram_message(chat_id, response)
+                # aquí podrías enviar el audio como archivo a Telegram
+                send_telegram_voice(chat_id, audio_bytes, file_name)
+
             else:
                 send_telegram_message(chat_id, f"❌ Error en Colab: {response.text}")
         except requests.RequestException as e:
@@ -110,12 +136,22 @@ def handle_message(chat_id: int, message: dict):
         if "voice" in message or "audio" in message:
             send_telegram_message(chat_id, "Procesando tu audio → texto 🗣")
 
-            # Obtener file_id del audio
             file_id = message["voice"]["file_id"] if "voice" in message else message["audio"]["file_id"]
+
+            # 🔹 Descargar el archivo de Telegram
+            file_info = requests.get(f"{TELEGRAM_API_URL}/bot{TELEGRAM_BOT_TOKEN}/getFile?file_id={file_id}").json()
+            file_path = file_info["result"]["file_path"]
+            file_url = f"{TELEGRAM_API_URL}/file/bot{TELEGRAM_BOT_TOKEN}/{file_path}"
+
+            audio_bytes = requests.get(file_url).content
+
+            # 🔹 Guardar en MinIO
+            file_name = generate_filename(chat_id, ".ogg")
+            upload_to_minio("telegram", file_name, audio_bytes, "audio/ogg")
 
             try:
                 url = f"{COLAB_URL}/stt"
-                payload = {"file_id": file_id}
+                payload = {"file_name": file_name, "bucket": "telegram"}
                 response = requests.post(url, json=payload, timeout=60)
 
                 if response.status_code == 200:
@@ -132,10 +168,29 @@ def handle_message(chat_id: int, message: dict):
         user_states[chat_id] = None
         return
 
-    # --- Caso 3: Sin estado definido ---
     send_telegram_menu(chat_id)
 
 
+
+def upload_to_minio(bucket: str, file_name: str, data: bytes, content_type="application/octet-stream") -> str:
+    try:
+        MINIO_CLIENT.put_object(
+            bucket,
+            file_name,
+            io.BytesIO(data),
+            length=len(data),
+            content_type=content_type
+        )
+        print(f"✅ Subido a MinIO: {bucket}/{file_name}")
+        return file_name
+    except S3Error as e:
+        print(f"❌ Error al subir a MinIO: {e}")
+        return None
+
+
+def generate_filename(chat_id: int, extension: str) -> str:
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    return f"{chat_id}_{timestamp}{extension}"
 
 # 🎯 Procesar botones del teclado
 def handle_callback(chat_id: int, option: str):

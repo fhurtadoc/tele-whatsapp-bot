@@ -36,10 +36,44 @@ services:
       - .env
     ports:
       - "8001:8001" 
+    depends_on:
+      - minio
     networks:
       - my_network
 
- 
+  minio:
+    image: minio/minio:latest
+    container_name: minio
+    restart: unless-stopped
+    ports:
+      - "9000:9000"   # API S3
+      - "9090:9090"   # Consola Web
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin123
+    command: server /data --console-address ":9090"
+    volumes:
+      - ./data:/data
+    networks:
+      - my_network   # 🔹 Conectamos MinIO a tu red
+
+  mc: # Cliente opcional para administrar buckets
+    image: minio/mc:latest
+    container_name: minio-client
+    depends_on:
+      - minio
+    entrypoint: >
+      /bin/sh -c "
+      sleep 5;
+      mc alias set local http://minio:9000 minioadmin minioadmin123;
+      mc mb local/telegram;
+      mc mb local/colab;
+      exit 0;
+      "
+    networks:
+      - my_network   
+
+
 networks:
   my_network:
     driver: bridge
