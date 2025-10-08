@@ -151,8 +151,8 @@ def handle_message(chat_id: int, message: dict):
 
             try:
                 url = f"{COLAB_URL}/stt"
-                payload = {"file_name": file_name, "bucket": "telegram"}
-                response = requests.post(url, json=payload, timeout=60)
+                files = {"file": (file_name, audio_bytes, "audio/ogg")}
+                response = requests.post(url, files=files, timeout=60)
 
                 if response.status_code == 200:
                     text_result = response.json().get("texto", "")
